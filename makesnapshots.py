@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-#
+#!/usr/bin/env python3
+"""
 # (c) 2012/2014 E.M. van Nuil / Oblivion b.v.
 #
 # makesnapshots.py version 3.3
@@ -18,19 +18,19 @@
 # version 3.0: Rewrote deleting functions, changed description
 # version 3.1: Fix a bug with the deletelist and added a pause in the volume loop
 # version 3.2: Tags of the volume are placed on the new snapshot
-# version 3.3: Merged IAM role addidtion from Github
+# version 3.3: Merged IAM role addidtion from Github"""
 
-from boto.ec2.connection import EC2Connection
-from boto.ec2.regioninfo import RegionInfo
-import boto.sns
 from datetime import datetime
 import time
 import sys
 import logging
 from config import config
+from boto.ec2.connection import EC2Connection
+from boto.ec2.regioninfo import RegionInfo
+import boto.sns
 
 
-if (len(sys.argv) < 2):
+if len(sys.argv) < 2:
     print('Please add a positional argument: day, week or month.')
     quit()
 else:
@@ -87,7 +87,7 @@ count_success = 0
 count_total = 0
 
 # Connect to AWS using the credentials provided above or in Environment vars or using IAM role.
-print 'Connecting to AWS'
+print('Connecting to AWS')
 if proxyHost:
     # proxy:
     # using roles
@@ -105,12 +105,13 @@ else:
 
 # Connect to SNS
 if sns_arn:
-    print 'Connecting to SNS'
+    print('Connecting to SNS')
     if proxyHost:
         # proxy:
         # using roles:
         if aws_access_key:
-            sns = boto.sns.connect_to_region(ec2_region_name, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key, proxy=proxyHost, proxy_port=proxyPort)
+            sns = boto.sns.connect_to_region(ec2_region_name, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key,
+                                             proxy=proxyHost, proxy_port=proxyPort)
         else:
             sns = boto.sns.connect_to_region(ec2_region_name, proxy=proxyHost, proxy_port=proxyPort)
     else:
@@ -124,7 +125,7 @@ if sns_arn:
 def get_resource_tags(resource_id):
     resource_tags = {}
     if resource_id:
-        tags = conn.get_all_tags({ 'resource-id': resource_id })
+        tags = conn.get_all_tags({'resource-id': resource_id})
         for tag in tags:
             # Tags starting with 'aws:' are reserved for internal use
             if not tag.name.startswith('aws:'):
@@ -134,16 +135,16 @@ def get_resource_tags(resource_id):
 def set_resource_tags(resource, tags):
     for tag_key, tag_value in tags.iteritems():
         if tag_key not in resource.tags or resource.tags[tag_key] != tag_value:
-            print 'Tagging %(resource_id)s with [%(tag_key)s: %(tag_value)s]' % {
+            print('Tagging %(resource_id)s with [%(tag_key)s: %(tag_value)s]' % {
                 'resource_id': resource.id,
                 'tag_key': tag_key,
                 'tag_value': tag_value
-            }
+            })
             resource.add_tag(tag_key, tag_value)
 
 # Get all the volumes that match the tag criteria
-print 'Finding volumes that match the requested tag ({ "tag:%(tag_name)s": "%(tag_value)s" })' % config
-vols = conn.get_all_volumes(filters={ 'tag:' + config['tag_name']: config['tag_value'] })
+print('Finding volumes that match the requested tag ({ "tag:%(tag_name)s": "%(tag_value)s" })' % config)
+vols = conn.get_all_volumes(filters={'tag:' + config['tag_name']: config['tag_value']})
 
 for vol in vols:
     try:
@@ -160,23 +161,22 @@ for vol in vols:
             current_snap = vol.create_snapshot(description)
             set_resource_tags(current_snap, tags_volume)
             suc_message = 'Snapshot created with description: %s and tags: %s' % (description, str(tags_volume))
-            print '     ' + suc_message
+            print('     ' + suc_message)
             logging.info(suc_message)
             total_creates += 1
-        except Exception, e:
-            print "Unexpected error:", sys.exc_info()[0]
+        except Exception as e:
+            print("Unexpected error:", sys.exc_info()[0])
             logging.error(e)
-            pass
 
         snapshots = vol.snapshots()
         deletelist = []
         for snap in snapshots:
             sndesc = snap.description
-            if (sndesc.startswith('week_snapshot') and period == 'week'):
+            if sndesc.startswith('week_snapshot') and period == 'week':
                 deletelist.append(snap)
-            elif (sndesc.startswith('day_snapshot') and period == 'day'):
+            elif sndesc.startswith('day_snapshot') and period == 'day':
                 deletelist.append(snap)
-            elif (sndesc.startswith('month_snapshot') and period == 'month'):
+            elif sndesc.startswith('month_snapshot') and period == 'month':
                 deletelist.append(snap)
             else:
                 logging.info('     Skipping, not added to deletelist: ' + sndesc)
@@ -207,7 +207,7 @@ for vol in vols:
             total_deletes += 1
         time.sleep(3)
     except:
-        print "Unexpected error:", sys.exc_info()[0]
+        print("Unexpected error:", sys.exc_info()[0])
         logging.error('Error in processing volume with id: ' + vol.id)
         errmsg += 'Error in processing volume with id: ' + vol.id
         count_errors += 1
@@ -225,8 +225,8 @@ message += "\nTotal snapshots created: " + str(total_creates)
 message += "\nTotal snapshots errors: " + str(count_errors)
 message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n"
 
-print '\n' + message + '\n'
-print result
+print('\n' + message + '\n')
+print(result)
 
 # SNS reporting
 if sns_arn:
@@ -235,4 +235,3 @@ if sns_arn:
     sns.publish(sns_arn, message, 'Finished AWS snapshotting')
 
 logging.info(result)
-
