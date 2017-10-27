@@ -24,6 +24,7 @@ from datetime import datetime
 import time
 import sys
 import logging
+import traceback
 from config import config
 from boto.ec2.connection import EC2Connection
 from boto.ec2.regioninfo import RegionInfo
@@ -133,7 +134,7 @@ def get_resource_tags(resource_id):
     return resource_tags
 
 def set_resource_tags(resource, tags):
-    for tag_key, tag_value in tags.iteritems():
+    for tag_key, tag_value in tags.items():
         if tag_key not in resource.tags or resource.tags[tag_key] != tag_value:
             print('Tagging %(resource_id)s with [%(tag_key)s: %(tag_value)s]' % {
                 'resource_id': resource.id,
@@ -166,6 +167,7 @@ for vol in vols:
             total_creates += 1
         except Exception as e:
             print("Unexpected error:", sys.exc_info()[0])
+            traceback.print_exc()
             logging.error(e)
 
         snapshots = vol.snapshots()
@@ -185,14 +187,10 @@ for vol in vols:
             logging.info(snap)
             logging.info(snap.start_time)
 
-        def date_compare(snap1, snap2):
-            if snap1.start_time < snap2.start_time:
-                return -1
-            elif snap1.start_time == snap2.start_time:
-                return 0
-            return 1
+        def date_compare(snapshot):
+            return snapshot.start_time
 
-        deletelist.sort(date_compare)
+        deletelist.sort(key=date_compare)
         if period == 'day':
             keep = keep_day
         elif period == 'week':
@@ -208,6 +206,7 @@ for vol in vols:
         time.sleep(3)
     except:
         print("Unexpected error:", sys.exc_info()[0])
+        traceback.print_exc()
         logging.error('Error in processing volume with id: ' + vol.id)
         errmsg += 'Error in processing volume with id: ' + vol.id
         count_errors += 1
