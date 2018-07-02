@@ -9,8 +9,11 @@ config = {
     'ec2_region_endpoint': 'ec2.eu-west-1.amazonaws.com',
 
     # Tag of the EBS volume you want to take the snapshots of
-    'tag_name': 'tag:MakeSnapshot',
+    'tag_name': 'MakeSnapshot',
     'tag_value': 'True',
+
+    # Region to copy taken snapshots. Set blank to disable.
+    'copy_region_name': 'us-east-1',
 
     # Number of snapshots to keep (the older ones are going to be deleted,
     # since they cost money).
@@ -22,9 +25,9 @@ config = {
     'log_file': '/tmp/makesnapshots.log',
 
     # ARN of the SNS topic (optional)
-    #'arn': 'xxxxxxxxxx',
+    # 'arn': 'xxxxxxxxxx',
 
     # Proxy config (optional)
-    #'proxyHost': '10.100.x.y',
-    #'proxyPort': '8080'
+    # 'proxyHost': '10.100.x.y',
+    # 'proxyPort': '8080'
 }

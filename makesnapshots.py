@@ -20,16 +20,20 @@
 # version 3.2: Tags of the volume are placed on the new snapshot
 # version 3.3: Merged IAM role addidtion from Github"""
 
-from datetime import datetime
-import time
-import sys
+
 import logging
+import sys
+import time
 import traceback
-from config import config
+from datetime import datetime
+
+import boto3
+import boto.ec2
+import boto.sns
 from boto.ec2.connection import EC2Connection
 from boto.ec2.regioninfo import RegionInfo
-import boto.sns
 
+from config import config
 
 if len(sys.argv) < 2:
     print('Please add a positional argument: day, week or month.')
@@ -54,6 +58,7 @@ errmsg = ""
 
 # Counters
 total_creates = 0
+total_copies = 0
 total_deletes = 0
 count_errors = 0
 
@@ -77,6 +82,7 @@ ec2_region_endpoint = config['ec2_region_endpoint']
 sns_arn = config.get('arn')
 proxyHost = config.get('proxyHost')
 proxyPort = config.get('proxyPort')
+copy_region_name = config.get('copy_region_name')
 
 region = RegionInfo(name=ec2_region_name, endpoint=ec2_region_endpoint)
 
@@ -123,6 +129,7 @@ if sns_arn:
         else:
             sns = boto.sns.connect_to_region(ec2_region_name)
 
+
 def get_resource_tags(resource_id):
     resource_tags = {}
     if resource_id:
@@ -133,6 +140,7 @@ def get_resource_tags(resource_id):
                 resource_tags[tag.name] = tag.value
     return resource_tags
 
+
 def set_resource_tags(resource, tags):
     for tag_key, tag_value in tags.items():
         if tag_key not in resource.tags or resource.tags[tag_key] != tag_value:
@@ -142,6 +150,7 @@ def set_resource_tags(resource, tags):
                 'tag_value': tag_value
             })
             resource.add_tag(tag_key, tag_value)
+
 
 # Get all the volumes that match the tag criteria
 print('Finding volumes that match the requested tag ({ "tag:%(tag_name)s": "%(tag_value)s" })' % config)
@@ -169,6 +178,33 @@ for vol in vols:
             print("Unexpected error:", sys.exc_info()[0])
             traceback.print_exc()
             logging.error(e)
+
+        # Copy snapshot to another region.
+        if copy_region_name:
+            try:
+                # We need to wait until the snapshot is complete before shipping them
+                while True:
+                    if current_snap.status == 'completed':
+                        break
+                    time.sleep(5)
+                    current_snap.update(validate=True)
+                    print('     ' + current_snap.status)
+
+                dest_conn = boto3.client('ec2', region_name=copy_region_name)
+                copied_snap = dest_conn.copy_snapshot(SourceRegion=ec2_region_name, SourceSnapshotId=current_snap.id,
+                                                      Description='[Copied from %s] %s' % (ec2_region_name, description))
+                dest_conn.create_tags(Resources=[copied_snap['SnapshotId']], Tags=[
+                    {'Key': 'source_snapshot_id', 'Value': current_snap.id},
+                    {'Key': 'Name', 'Value': tags_volume.get('Name') or current_snap.id}
+                ])
+                suc_message = 'Snapshot copied to ' + copy_region_name
+                print('     ' + suc_message)
+                logging.info(suc_message)
+                total_copies += 1
+            except Exception as e:
+                print("Unexpected error:", sys.exc_info()[0])
+                traceback.print_exc()
+                logging.error(e)
 
         snapshots = vol.snapshots()
         deletelist = []
@@ -202,6 +238,20 @@ for vol in vols:
             del_message = '     Deleting snapshot ' + deletelist[i].description
             logging.info(del_message)
             deletelist[i].delete()
+            if dest_conn:
+                logging.info('     Deleting snapshots copies sourced from the original snapshot: ' + deletelist[i].id)
+                copied_vols = dest_conn.describe_snapshots(
+                    OwnerIds=['self'],
+                    Filters=[
+                        {
+                            'Name': 'tag:source_snapshot_id',
+                            'Values': [deletelist[i].id]
+                        },
+                    ]
+                )
+                for copied_vol in copied_vols['Snapshots']:
+                    logging.info('     Deleting copied snapshot: ' + copied_vol['SnapshotId'])
+                    dest_conn.delete_snapshot(SnapshotId=copied_vol['SnapshotId'])
             total_deletes += 1
         time.sleep(3)
     except:
@@ -221,6 +271,7 @@ result = '\nFinished making snapshots at %(date)s with %(count_success)s snapsho
 
 message += result
 message += "\nTotal snapshots created: " + str(total_creates)
+message += "\nTotal snapshots copied: " + str(total_copies)
 message += "\nTotal snapshots errors: " + str(count_errors)
 message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n"
 
