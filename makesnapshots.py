@@ -200,7 +200,13 @@ for vol in vols:
                     current_snap.update(validate=True)
                     print('     ' + current_snap.status)
 
-                dest_conn = boto3.client('ec2', region_name=copy_region_name)
+                dest_conn = boto3.client(
+                    'ec2',
+                    region_name=copy_region_name,
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    aws_session_token=security_token
+                )
                 copied_snap = dest_conn.copy_snapshot(SourceRegion=ec2_region_name, SourceSnapshotId=current_snap.id,
                                                       Description='[Copied from %s] %s' % (ec2_region_name, description))
                 dest_conn.create_tags(Resources=[copied_snap['SnapshotId']], Tags=[
