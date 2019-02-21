@@ -74,6 +74,16 @@ start_message = 'Started taking %(period)s snapshots at %(date)s' % {
 message += start_message + "\n\n"
 logging.info(start_message)
 
+# Assume IAM role if defined.
+security_token = None
+if config['iam_role_arn']:
+    sts = boto3.client('sts')
+    assumedRoleObject = sts.assume_role(RoleArn=config['iam_role_arn'], RoleSessionName='AssumeRoleSession1')
+    credentials = assumedRoleObject['Credentials']
+    config['aws_access_key'] = credentials['AccessKeyId']
+    config['aws_secret_key'] = credentials['SecretAccessKey']
+    security_token = credentials['SessionToken']
+
 # Get settings from config.py
 aws_access_key = config['aws_access_key']
 aws_secret_key = config['aws_secret_key']
@@ -99,14 +109,14 @@ if proxyHost:
     # proxy:
     # using roles
     if aws_access_key:
-        conn = EC2Connection(aws_access_key, aws_secret_key, region=region, proxy=proxyHost, proxy_port=proxyPort)
+        conn = EC2Connection(aws_access_key, aws_secret_key, security_token=security_token, region=region, proxy=proxyHost, proxy_port=proxyPort)
     else:
         conn = EC2Connection(region=region, proxy=proxyHost, proxy_port=proxyPort)
 else:
     # non proxy:
     # using roles
     if aws_access_key:
-        conn = EC2Connection(aws_access_key, aws_secret_key, region=region)
+        conn = EC2Connection(aws_access_key, aws_secret_key, security_token=security_token, region=region)
     else:
         conn = EC2Connection(region=region)
 
@@ -118,7 +128,7 @@ if sns_arn:
         # using roles:
         if aws_access_key:
             sns = boto.sns.connect_to_region(ec2_region_name, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key,
-                                             proxy=proxyHost, proxy_port=proxyPort)
+                                             security_token=security_token, proxy=proxyHost, proxy_port=proxyPort)
         else:
             sns = boto.sns.connect_to_region(ec2_region_name, proxy=proxyHost, proxy_port=proxyPort)
     else:
